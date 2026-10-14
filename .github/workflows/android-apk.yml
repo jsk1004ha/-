@@ -1,0 +1,40 @@
+name: Build APK Extractor
+
+on:
+  push:
+    branches:
+      - apk-extractor-build-2026
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build release APK
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
+      - name: Sign installable release APK
+        shell: bash
+        run: |
+          keytool -genkeypair -v -keystore "$RUNNER_TEMP/exporter.jks" -storepass "android-exporter" -keypass "android-exporter" -alias exporter -keyalg RSA -keysize 3072 -validity 3650 -dname "CN=APK Extractor, OU=Local, O=Local, L=Seoul, C=KR"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/apk/release/aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks "$RUNNER_TEMP/exporter.jks" --ks-key-alias exporter --ks-pass pass:android-exporter --key-pass pass:android-exporter --out APKExtractor-v1.0.0.apk app/build/outputs/apk/release/aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose APKExtractor-v1.0.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APKExtractor-installable
+          path: APKExtractor-v1.0.0.apk
+          if-no-files-found: error
